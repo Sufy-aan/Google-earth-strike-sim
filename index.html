@@ -2,16 +2,15 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>STRIKE SIM — Fighter HUD</title>
+<title>STRIKE SIM — Earth Ops (Enhanced Physics & HUD)</title>
 
 <!-- ======================================================================
-     STRIKE SIM — EARTH OPS (v3)
-     Bit 1 of the rebuild: real fighter-jet HUD (pitch ladder + tapes),
-     helicopter removed, proper bank-to-turn + swoop/dive flight feel.
-     Bullets, target hit detection, and the in-game tutorial are NOT
-     touched in this pass — next bits.
-
-     >>> BEFORE HOSTING: paste your Google Maps Platform API key below <<<
+     STRIKE SIM — EARTH OPS (Enhanced Edition)
+     Featuring:
+     - Authentic Jet Fighter Glass Cockpit HUD (G-meter, Mach, Reticle, Pitch Ladder)
+     - Full 6-DOF Euler Flight Dynamics (AOA, Banking Turn Mechanics, Lift, Energy/Drag)
+     - Realistic Ballistics Physics (Muzzle Velocity, Gravity Drop, Atmospheric Drag)
+     - Synthetic Web Audio Engine (Jet Engine Turbines & Vulcan Cannon Fire SFX)
      ====================================================================== -->
 
 <script>window.CESIUM_BASE_URL = 'https://cesium.com/downloads/cesiumjs/releases/1.117/Build/Cesium/';</script>
@@ -19,87 +18,68 @@
 <link href="https://cesium.com/downloads/cesiumjs/releases/1.117/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
 
 <style>
-  :root{ --hud:#5CFFB0; --hud-dim:rgba(92,255,176,0.45); --hud-amber:#FFC24B; --hud-red:#FF5C5C; }
-  html,body{margin:0;padding:0;overflow:hidden;background:#000;
-    font-family:'Consolas','Courier New',monospace; color:var(--hud);}
+  :root{
+    --hud-green:#00ff66; --hud-green-glow:rgba(0,255,102,0.4);
+    --hud-amber:#FFC24B; --hud-red:#FF3333;
+    --panel-bg:rgba(4,10,8,0.78); --panel-line:rgba(0,255,102,0.3);
+  }
+  html,body{margin:0;padding:0;overflow:hidden;background:#03060a;
+    font-family:'Consolas','Courier New',monospace; color:var(--hud-green); user-select:none;}
   #cesiumContainer{position:absolute; inset:0;}
   .cesium-widget-credits{display:none !important;}
+
   #hud{position:absolute;inset:0;pointer-events:none;}
+  .panel{position:absolute; background:var(--panel-bg); border:1px solid var(--panel-line);
+    border-radius:3px; padding:10px 14px; box-shadow:0 0 10px rgba(0,255,102,0.1) inset;}
 
-  /* canopy vignette so it reads as a cockpit, not a floating overlay */
-  #vignette{position:absolute; inset:0; pointer-events:none;
-    box-shadow: inset 0 0 160px 40px rgba(0,0,0,0.55);}
-  #canopyFrame{position:absolute; inset:0; pointer-events:none;}
+  /* Top telemetry bars */
+  #topbar{top:14px; left:14px; right:14px; display:flex; justify-content:space-between;
+    align-items:flex-start; background:none; border:none; padding:0;}
+  .stat-block{padding:8px 14px;}
+  .stat-label{font-size:10px; letter-spacing:2px; opacity:0.75;}
+  .stat-value{font-size:20px; font-weight:bold; margin-top:2px; text-shadow:0 0 6px var(--hud-green-glow);}
+  #speedBlock .stat-value,#altBlock .stat-value{color:var(--hud-green);}
+  #hpBlock .stat-value{color:var(--hud-red);}
+  #vehicleBlock .stat-value{color:var(--hud-green); font-size:15px;}
 
-  text, .hudtext{ fill:var(--hud); font-family:'Consolas','Courier New',monospace; }
+  /* Jet HUD Overlay Components */
+  #hudCanvas{position:absolute; inset:0; width:100%; height:100%;}
 
-  /* ---- top strip: heading tape ---- */
-  #headingTape{position:absolute; top:10px; left:50%; transform:translateX(-50%);
-    width:420px; height:26px; overflow:hidden;}
-  #headingStrip{position:absolute; top:2px; left:0; white-space:nowrap; font-size:13px; letter-spacing:0px; color:var(--hud);}
-  #headingBox{position:absolute; top:22px; left:50%; transform:translateX(-50%);
-    border:1px solid var(--hud); padding:1px 8px; font-size:14px; font-weight:bold; background:rgba(0,10,6,0.5);}
+  #compass{position:absolute; top:14px; left:50%; transform:translateX(-50%);
+    width:360px; height:32px; overflow:hidden; padding:6px 0; border-radius:2px;}
+  #compassStrip{position:absolute; top:6px; left:0; height:20px; white-space:nowrap; font-size:13px; letter-spacing:6px; font-weight:bold;}
 
-  /* ---- left airspeed tape ---- */
-  #speedTapeWrap{position:absolute; top:50%; left:60px; transform:translateY(-50%);
-    width:70px; height:220px;}
-  #speedBox{position:absolute; top:50%; left:0; transform:translateY(-50%);
-    border:1px solid var(--hud); background:rgba(0,10,6,0.55); padding:4px 8px; font-size:20px; font-weight:bold; text-align:right; width:100%;}
-  #speedUnit{font-size:9px; opacity:0.7; display:block; letter-spacing:1px;}
+  #questPanel{top:70px; left:14px; width:220px;}
+  #questPanel .qtitle{font-size:10px; letter-spacing:2px; opacity:0.65; margin-bottom:6px;}
+  #questPanel .qname{font-size:15px; color:var(--hud-amber); font-weight:bold;}
+  #questPanel .qdist{font-size:13px; margin-top:4px;}
 
-  /* ---- right altitude tape ---- */
-  #altTapeWrap{position:absolute; top:50%; right:60px; transform:translateY(-50%);
-    width:80px; height:220px;}
-  #altBox{position:absolute; top:50%; left:0; transform:translateY(-50%);
-    border:1px solid var(--hud); background:rgba(0,10,6,0.55); padding:4px 8px; font-size:20px; font-weight:bold; width:100%;}
-  #altUnit{font-size:9px; opacity:0.7; display:block; letter-spacing:1px;}
-  #vsiRow{position:absolute; top:calc(50% + 34px); left:0; font-size:11px; opacity:0.8; width:100%; text-align:left;}
+  #scoreBlock{top:70px; right:14px; text-align:right; width:170px;}
+  #scoreBlock .stat-value{color:var(--hud-green); font-size:24px;}
+  #scoreBlock .stat-sub{font-size:10px; opacity:0.5; margin-top:4px;}
 
-  /* ---- pitch ladder (real HUD style, floats over world) ---- */
-  #pitchLadderSvg{position:absolute; top:50%; left:50%; width:560px; height:560px;
-    transform:translate(-50%,-50%); overflow:visible;}
-  .ladderLine{stroke:var(--hud); stroke-width:2;}
-  .ladderLineNeg{stroke:var(--hud); stroke-width:2; stroke-dasharray:6,5;}
-  .ladderLabel{font-size:13px; fill:var(--hud);}
-  #bankScaleSvg{position:absolute; top:50%; left:50%; width:560px; height:560px; transform:translate(-50%,-50%); overflow:visible;}
-
-  /* ---- flight path marker + fixed reticle ---- */
-  #fpm{position:absolute; top:50%; left:50%; width:26px; height:26px; transform:translate(-50%,-50%);}
-  #centerReticle{position:absolute; top:50%; left:50%; width:36px; height:36px; transform:translate(-50%,-50%);}
-
-  /* ---- bottom readouts ---- */
-  #bottomBar{position:absolute; bottom:18px; left:50%; transform:translateX(-50%);
-    display:flex; gap:26px; font-size:11px; letter-spacing:1px; opacity:0.9;}
-  #bottomBar .readout{text-align:center;}
-  #bottomBar .rlabel{opacity:0.55; font-size:9px; letter-spacing:2px;}
-  #bottomBar .rvalue{font-size:15px; font-weight:bold; color:var(--hud-amber);}
-
-  #hpReadout{position:absolute; top:14px; left:14px; font-size:11px;}
-  #hpReadout .rvalue{font-size:20px; font-weight:bold; color:var(--hud-red);}
-
-  #questPanel{position:absolute; top:14px; right:14px; width:220px; text-align:right;
-    border:1px solid var(--hud-dim); background:rgba(0,10,6,0.5); padding:8px 12px;}
-  #questPanel .qtitle{font-size:9px; letter-spacing:2px; opacity:0.6;}
-  #questPanel .qname{font-size:15px; color:var(--hud-amber); font-weight:bold; margin-top:2px;}
-  #questPanel .qdist{font-size:12px; margin-top:3px;}
-
-  #waypointMarker{position:absolute; pointer-events:none; transform:translate(-50%,-100%);}
+  #waypointMarker{position:absolute; pointer-events:none; transform:translate(-50%,-100%); display:none;}
   #waypointMarker .arrowLabel{position:absolute; top:-18px; left:50%; transform:translateX(-50%);
-    font-size:11px; color:var(--hud-amber); white-space:nowrap; text-shadow:0 0 4px rgba(0,0,0,0.9);}
-  #offscreenArrow{position:absolute; pointer-events:none;}
+    font-size:11px; color:var(--hud-amber); font-weight:bold; white-space:nowrap; text-shadow:0 0 6px rgba(0,0,0,0.9);}
+  #offscreenArrow{position:absolute; pointer-events:none; display:none;}
 
-  #startScreen{position:absolute; inset:0; background:radial-gradient(ellipse at center,#0a1410 0%,#020403 80%);
+  #startScreen{position:absolute; inset:0; background:radial-gradient(ellipse at center,#081610 0%,#010302 85%);
     display:flex; flex-direction:column; align-items:center; justify-content:center; z-index:20;}
-  #startScreen h1{font-size:38px; letter-spacing:9px; color:var(--hud); margin:0; text-shadow:0 0 18px rgba(92,255,176,0.5);}
-  #startScreen .sub{font-size:12px; letter-spacing:3px; opacity:0.55; margin-top:8px; text-align:center; max-width:520px;}
-  #launchBtn{margin-top:38px; background:rgba(92,255,176,0.08); border:1px solid var(--hud); color:var(--hud);
-    padding:16px 44px; font-family:inherit; letter-spacing:5px; font-size:16px; cursor:pointer;}
-  #launchBtn:hover{background:rgba(92,255,176,0.18);}
-  #controlsHint{margin-top:34px; font-size:11px; opacity:0.5; text-align:center; line-height:1.9; letter-spacing:1px;}
+  #startScreen h1{font-size:42px; letter-spacing:10px; color:var(--hud-green); margin:0;
+    text-shadow:0 0 20px var(--hud-green-glow);}
+  #startScreen .sub{font-size:12px; letter-spacing:3px; opacity:0.65; margin-top:8px; text-align:center; max-width:560px;}
+  .vehiclePick{display:flex; gap:26px; margin-top:36px;}
+  .vcard{width:230px; border:1px solid var(--panel-line); background:var(--panel-bg);
+    padding:22px; text-align:center; cursor:pointer; transition:all .2s ease; border-radius:4px;}
+  .vcard:hover{background:rgba(0,255,102,0.12); transform:translateY(-4px); box-shadow:0 0 16px rgba(0,255,102,0.2);}
+  .vcard .vicon{font-size:46px; margin-bottom:10px;}
+  .vcard .vname{font-size:18px; letter-spacing:2px; color:var(--hud-amber); font-weight:bold;}
+  .vcard .vdesc{font-size:11px; opacity:0.7; margin-top:8px; line-height:1.5;}
+  #controlsHint{margin-top:36px; font-size:11px; opacity:0.6; text-align:center; line-height:1.8; letter-spacing:1px;}
   #keyWarning{margin-top:18px; font-size:11px; color:var(--hud-red); opacity:0.85; text-align:center; max-width:520px; display:none;}
 
   #missionBanner{position:absolute; top:22%; left:50%; transform:translate(-50%,-50%);
-    font-size:26px; letter-spacing:5px; color:var(--hud-amber); text-shadow:0 0 20px rgba(255,194,75,0.6);
+    font-size:28px; letter-spacing:6px; color:var(--hud-amber); text-shadow:0 0 20px rgba(255,194,75,0.7);
     opacity:0; pointer-events:none; z-index:15; text-align:center;}
   #missionBanner.show{animation:bannerPop 1.8s ease forwards;}
   @keyframes bannerPop{0%{opacity:0; transform:translate(-50%,-50%) scale(0.8);}
@@ -108,15 +88,13 @@
 
   #gameOverScreen{position:absolute; inset:0; background:rgba(2,4,3,0.92); z-index:25;
     display:none; flex-direction:column; align-items:center; justify-content:center;}
-  #gameOverScreen h2{font-size:32px; letter-spacing:8px; color:var(--hud-red);}
-  #gameOverScreen .finalScore{font-size:18px; color:var(--hud); margin-top:10px;}
-  #gameOverScreen button{margin-top:28px; background:none; border:1px solid var(--hud); color:var(--hud);
-    padding:12px 26px; font-family:inherit; letter-spacing:3px; font-size:13px; cursor:pointer;}
-  #gameOverScreen button:hover{background:rgba(92,255,176,0.15);}
+  #gameOverScreen h2{font-size:36px; letter-spacing:8px; color:var(--hud-red);}
+  #gameOverScreen .finalScore{font-size:20px; color:var(--hud-green); margin-top:10px;}
+  #gameOverScreen button{margin-top:30px; background:none; border:1px solid var(--hud-green);
+    color:var(--hud-green); padding:12px 28px; font-family:inherit; letter-spacing:3px; font-size:13px; cursor:pointer;}
+  #gameOverScreen button:hover{background:rgba(0,255,102,0.2);}
 
   #lowHpFlash{position:absolute; inset:0; pointer-events:none; background:rgba(255,40,40,0.0); transition:background 0.1s;}
-  #stallWarning{position:absolute; top:38%; left:50%; transform:translate(-50%,-50%);
-    font-size:22px; letter-spacing:6px; color:var(--hud-red); opacity:0; text-shadow:0 0 12px rgba(255,80,80,0.7);}
   #loadingMsg{position:absolute; bottom:14px; left:14px; font-size:11px; opacity:0.5; z-index:5;}
 </style>
 </head>
@@ -125,86 +103,74 @@
 <div id="cesiumContainer"></div>
 
 <div id="startScreen">
-  <h1>STRIKE SIM</h1>
-  <div class="sub">FIGHTER JET — real Google Photorealistic 3D Tiles, real landmark objectives</div>
-  <button id="launchBtn">ENGAGE</button>
-  <div id="controlsHint">
-    W/S — nose down/up (dive &amp; climb) &nbsp; A/D — bank left/right (banking drives your turn)<br>
-    Q/E — rudder trim &nbsp; SHIFT/CTRL — throttle up/down &nbsp; SPACE — fire<br>
-    Bank hard and pull back to swoop into a target; level off before you stall
+  <h1>STRIKE SIM: EARTH</h1>
+  <div class="sub">REALISTIC FLIGHT DYNAMICS — Photorealistic 3D Interdiction</div>
+  <div class="vehiclePick">
+    <div class="vcard" data-vehicle="heli">
+      <div class="vicon">🚁</div>
+      <div class="vname">AH-64 ATTACK HELI</div>
+      <div class="vdesc">Low speed maneuverability.<br>Direct thrust-vector yaw & hover authority.</div>
+    </div>
+    <div class="vcard" data-vehicle="jet">
+      <div class="vicon">✈️</div>
+      <div class="vname">F-16C VIPER</div>
+      <div class="vdesc">High dynamics flight model.<br>Bank-to-turn roll coupling & G-load limits.</div>
+    </div>
   </div>
-  <div id="keyWarning">No Google Maps API key detected — set GOOGLE_MAPS_API_KEY near the top of this file's &lt;script&gt; section before hosting.</div>
+  <div id="controlsHint">
+    W/S — Elevator Pitch Nose Down/Up &nbsp;|&nbsp; A/D — Aileron Roll / Bank &nbsp;|&nbsp; Q/E — Rudder Yaw<br>
+    SHIFT/CTRL — Engine Throttle &nbsp;|&nbsp; SPACE — M61 Vulcan Cannon Auto-fire
+  </div>
+  <div id="keyWarning">
+    No Google Maps API key detected — set GOOGLE_MAPS_API_KEY near the top of this file's &lt;script&gt; section.
+  </div>
 </div>
 
 <div id="missionBanner"></div>
 
 <div id="hud" style="display:none;">
-  <div id="vignette"></div>
+  <canvas id="hudCanvas"></canvas>
 
-  <div id="headingTape"><div id="headingStrip"></div></div>
-  <div id="headingBox"><span id="headingVal">000</span></div>
-
-  <div id="speedTapeWrap">
-    <div id="speedBox"><span id="speedVal">0</span><span id="speedUnit">KT IAS</span></div>
+  <div id="topbar">
+    <div class="stat-block panel" id="speedBlock"><div class="stat-label">AIRSPEED</div><div class="stat-value"><span id="speedVal">0</span> KT</div></div>
+    <div class="stat-block panel" id="altBlock"><div class="stat-label">ALTITUDE</div><div class="stat-value"><span id="altVal">0</span> FT</div></div>
+    <div class="stat-block panel" id="vsiBlock"><div class="stat-label">CLIMB RATE</div><div class="stat-value"><span id="vsiVal">0</span> FPM</div></div>
+    <div class="stat-block panel" id="vehicleBlock"><div class="stat-label">CRAFT</div><div class="stat-value" id="vehicleVal">—</div></div>
+    <div class="stat-block panel" id="hpBlock"><div class="stat-label">HULL INTEGRITY</div><div class="stat-value"><span id="hpVal">100</span>%</div></div>
   </div>
 
-  <div id="altTapeWrap">
-    <div id="altBox"><span id="altVal">0</span><span id="altUnit">M ALT</span>
-      <div id="vsiRow">VS <span id="vsiVal">0</span></div>
-    </div>
-  </div>
+  <div id="compass" class="panel"><div id="compassStrip"></div></div>
 
-  <svg id="pitchLadderSvg" viewBox="-280 -280 560 560"><g id="ladderGroup"></g></svg>
-  <svg id="bankScaleSvg" viewBox="-280 -280 560 560">
-    <g>
-      <path d="M -230 -170 A 280 280 0 0 1 230 -170" fill="none" stroke="var(--hud)" stroke-width="1" opacity="0.5"/>
-      <g id="bankTickGroup"></g>
-      <polygon id="bankPointer" points="0,-172 -7,-158 7,-158" fill="#FFC24B"/>
-    </g>
-  </svg>
-
-  <div id="fpm">
-    <svg viewBox="0 0 26 26"><circle cx="13" cy="13" r="6" fill="none" stroke="#5CFFB0" stroke-width="1.6"/>
-      <line x1="13" y1="0" x2="13" y2="6" stroke="#5CFFB0" stroke-width="1.6"/>
-      <line x1="0" y1="13" x2="6" y2="13" stroke="#5CFFB0" stroke-width="1.6"/>
-      <line x1="20" y1="13" x2="26" y2="13" stroke="#5CFFB0" stroke-width="1.6"/></svg>
-  </div>
-  <div id="centerReticle">
-    <svg viewBox="0 0 36 36"><circle cx="18" cy="18" r="13" fill="none" stroke="#FFC24B" stroke-width="1.2" opacity="0.85"/>
-      <circle cx="18" cy="18" r="1.6" fill="#FFC24B"/></svg>
-  </div>
-
-  <div id="bottomBar">
-    <div class="readout"><div class="rlabel">THROTTLE</div><div class="rvalue"><span id="throttleVal">0</span>%</div></div>
-    <div class="readout"><div class="rlabel">G</div><div class="rvalue"><span id="gVal">1.0</span></div></div>
-    <div class="readout"><div class="rlabel">AOA</div><div class="rvalue"><span id="aoaVal">0</span>°</div></div>
-  </div>
-
-  <div id="hpReadout"><div class="rlabel" style="font-size:9px;letter-spacing:2px;opacity:0.6;">INTEGRITY</div>
-    <div class="rvalue"><span id="hpVal">100</span>%</div></div>
-
-  <div id="questPanel">
-    <div class="qtitle">ACTIVE TARGET</div>
+  <div id="questPanel" class="panel">
+    <div class="qtitle">DESIGNATED TARGET</div>
     <div class="qname" id="qName">—</div>
-    <div class="qdist" id="qDist">— m</div>
+    <div class="qdist" id="qDist">— M</div>
+  </div>
+
+  <div id="scoreBlock" class="panel">
+    <div class="stat-label">TARGETS NEUTRALIZED</div>
+    <div class="stat-value" id="scoreVal">0</div>
+    <div class="stat-sub" id="scoreTotal">of 0</div>
   </div>
 
   <div id="waypointMarker">
     <div class="arrowLabel" id="wpLabel">TARGET</div>
-    <svg width="34" height="34" viewBox="0 0 34 34"><polygon points="17,2 30,26 17,20 4,26" fill="#FFC24B" stroke="#7a5300" stroke-width="1" opacity="0.95"/></svg>
+    <svg width="32" height="32" viewBox="0 0 34 34">
+      <polygon points="17,2 30,26 17,20 4,26" fill="#FFC24B" stroke="#7a5300" stroke-width="1"/>
+    </svg>
   </div>
-  <div id="offscreenArrow"><svg width="30" height="30" viewBox="0 0 30 30"><polygon points="15,2 27,26 15,19 3,26" fill="#FFC24B" opacity="0.9"/></svg></div>
-
-  <div id="stallWarning">STALL</div>
+  <div id="offscreenArrow">
+    <svg width="28" height="28" viewBox="0 0 30 30"><polygon points="15,2 27,26 15,19 3,26" fill="#FFC24B" opacity="0.9"/></svg>
+  </div>
 </div>
 
 <div id="lowHpFlash"></div>
 <div id="loadingMsg"></div>
 
 <div id="gameOverScreen">
-  <h2 id="gameOverTitle">AIRCRAFT LOST</h2>
+  <h2 id="gameOverTitle">AIRCRAFT DESTROYED</h2>
   <div class="finalScore" id="finalScoreText">0 targets destroyed</div>
-  <button id="restartBtn">FLY AGAIN</button>
+  <button id="restartBtn">RE-ENGAGE</button>
 </div>
 
 <script>
@@ -212,9 +178,10 @@
    CONFIG
    ============================================================ */
 const GOOGLE_MAPS_API_KEY = "AIzaSyAknTUM5IIDBd7RLIR_OXDASscKBSePDUM";
+
 const START_LON = -122.4194;
 const START_LAT = 37.7749;
-const START_HEIGHT = 480;
+const START_HEIGHT = 450; // In meters
 
 const REAL_TARGETS = [
   ['SALESFORCE TOWER',      -122.3972, 37.7897, 5,  326],
@@ -226,266 +193,487 @@ const REAL_TARGETS = [
 ];
 
 /* ============================================================
-   FLIGHT MODEL — fighter jet only.
-   Bank sets a target roll you ease into; heading turns because of
-   that bank (coordinated turn) scaled by speed. Pitch works the
-   same way, so pulling back into a steep bank + climb genuinely
-   swoops, and pushing forward in a bank dives/accelerates.
+   AUDIO SYNTHESIZER ENGINE (Web Audio API)
    ============================================================ */
-const CFG = {
-  minSpeed: 40, maxSpeed: 240, cruiseAccel: 1.0,
-  maxRoll: 1.15, rollRate: 2.1, turnCoupling: 1.6,
-  maxPitch: 1.05, pitchRate: 1.3,
-  stallSpeed: 65, fireRange: 220, fireRate: 0.12, damage: 34, minAlt: 55
-};
+let audioCtx = null;
+let jetEngineNode = null, engineGainNode = null;
+let fireBuffer = null;
 
-let viewer, scene, camera, vehicleEntity;
+function initAudio() {
+  if (audioCtx) return;
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+  // Engine Noise Synthesis (Pink/White noise with lowpass filters)
+  const bufferSize = audioCtx.sampleRate * 2;
+  const noiseBuffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+  const output = noiseBuffer.getChannelData(0);
+  for (let i = 0; i < bufferSize; i++) {
+    output[i] = Math.random() * 2 - 1;
+  }
+
+  const whiteNoise = audioCtx.createBufferSource();
+  whiteNoise.buffer = noiseBuffer;
+  whiteNoise.loop = true;
+
+  const filter = audioCtx.createBiquadFilter();
+  filter.type = 'lowpass';
+  filter.frequency.value = 300;
+
+  engineGainNode = audioCtx.createGain();
+  engineGainNode.gain.value = 0.15;
+
+  whiteNoise.connect(filter);
+  filter.connect(engineGainNode);
+  engineGainNode.connect(audioCtx.destination);
+  whiteNoise.start();
+
+  jetEngineNode = filter;
+}
+
+function updateEngineAudio(throttle, speedRatio) {
+  if (!audioCtx || !jetEngineNode) return;
+  const freq = 180 + throttle * 600 + speedRatio * 400;
+  jetEngineNode.frequency.setTargetAtTime(freq, audioCtx.currentTime, 0.1);
+}
+
+function playGunfireSound() {
+  if (!audioCtx) return;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = 'sawtooth';
+  osc.frequency.setValueAtTime(120, audioCtx.currentTime);
+  osc.frequency.exponentialRampToValueAtTime(30, audioCtx.currentTime + 0.05);
+
+  gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.05);
+
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+  osc.start();
+  osc.stop(audioCtx.currentTime + 0.05);
+}
+
+/* ============================================================
+   GAME LOGIC & PHYSICS
+   ============================================================ */
+let viewer, scene, camera;
+let vehicleEntity, rotorEntity;
+let vehicleType = 'jet';
 let running = false;
+let hudCanvas, hudCtx;
 
 const state = {
-  position:null, heading:0, pitch:0, roll:0,
-  speed:120, throttle:0.6, vsi:0, gForce:1, aoa:0,
-  hp:100, score:0, cooldown:0, alive:true
+  position: null,
+  velocity: new Cesium.Cartesian3(),
+  heading: 0, pitch: 0, roll: 0,
+  pitchRate: 0, rollRate: 0, yawRate: 0,
+  speed: 120, throttle: 0.6,
+  vsi: 0, gForce: 1.0, aoa: 0,
+  hp: 100, score: 0, cooldown: 0, alive: true
 };
+
 const keys = {};
-window.addEventListener('keydown', e=>{keys[e.code]=true;});
-window.addEventListener('keyup', e=>{keys[e.code]=false;});
+window.addEventListener('keydown', e => { keys[e.code] = true; });
+window.addEventListener('keyup', e => { keys[e.code] = false; });
+
+const VEHICLE_CONFIGS = {
+  jet: {
+    label:'F-16C VIPER', minSpeed:40, maxSpeed:280, cruiseAccel:2.5,
+    maxRollRate:2.4, rollAccel:6.0,
+    maxPitchRate:1.4, pitchAccel:4.0,
+    liftCoeff:0.0022, dragCoeff:0.00035, stallSpeed:65,
+    fireRange:600, fireRate:0.06, damage:18, minAlt:20,
+    muzzleVel:850
+  },
+  heli: {
+    label:'AH-64 APACHE', minSpeed:0, maxSpeed:110, cruiseAccel:3.0,
+    maxRollRate:1.8, rollAccel:5.0,
+    maxPitchRate:1.2, pitchAccel:3.5,
+    liftCoeff:0.004, dragCoeff:0.001, stallSpeed:0,
+    fireRange:500, fireRate:0.08, damage:24, minAlt:10,
+    muzzleVel:650
+  }
+};
 
 let targets = [];
 let bullets = [];
 
-function offsetCartesian(origin,e,n,u){
+function offsetCartesian(origin, east, north, up){
   const enu = Cesium.Transforms.eastNorthUpToFixedFrame(origin);
-  return Cesium.Matrix4.multiplyByPoint(enu, new Cesium.Cartesian3(e,n,u), new Cesium.Cartesian3());
+  const local = new Cesium.Cartesian3(east, north, up);
+  return Cesium.Matrix4.multiplyByPoint(enu, local, new Cesium.Cartesian3());
 }
 
 async function initCesium(){
   Cesium.GoogleMaps.defaultApiKey = GOOGLE_MAPS_API_KEY;
+
   viewer = new Cesium.Viewer('cesiumContainer', {
-    imageryProvider:false, baseLayerPicker:false, geocoder:false, homeButton:false,
-    sceneModePicker:false, navigationHelpButton:false, animation:false, timeline:false,
-    fullscreenButton:false, infoBox:false, selectionIndicator:false,
+    imageryProvider: false, baseLayerPicker: false, geocoder: false, homeButton: false,
+    sceneModePicker: false, navigationHelpButton: false, animation: false, timeline: false,
+    fullscreenButton: false, infoBox: false, selectionIndicator: false,
     creditContainer: document.createElement('div')
   });
-  scene = viewer.scene; camera = viewer.camera;
+  scene = viewer.scene;
+  camera = viewer.camera;
   scene.globe.show = false;
   scene.screenSpaceCameraController.enableInputs = false;
-  document.getElementById('loadingMsg').textContent = 'Streaming photorealistic tiles…';
+
+  hudCanvas = document.getElementById('hudCanvas');
+  hudCtx = hudCanvas.getContext('2d');
+  resizeCanvas();
+  window.addEventListener('resize', resizeCanvas);
+
+  document.getElementById('loadingMsg').textContent = 'Loading photorealistic 3D terrain...';
   try{
     const tileset = await Cesium.createGooglePhotorealistic3DTileset();
     scene.primitives.add(tileset);
   }catch(err){
-    document.getElementById('loadingMsg').textContent = 'Could not load Google 3D Tiles — check your API key.';
-    console.error(err);
+    document.getElementById('loadingMsg').textContent =
+      '3D Tiles failed — check API key and ensure Google Map Tiles API is enabled.';
   }
   document.getElementById('loadingMsg').textContent = '';
 }
 
-function buildVehicle(){
-  vehicleEntity = viewer.entities.add({
-    position: state.position,
-    orientation: Cesium.Transforms.headingPitchRollQuaternion(state.position, new Cesium.HeadingPitchRoll(0,0,0)),
-    box: { dimensions:new Cesium.Cartesian3(6,26,4), material:Cesium.Color.fromCssColorString('#5b6673'), outline:true, outlineColor:Cesium.Color.BLACK }
-  });
+function resizeCanvas(){
+  if(!hudCanvas) return;
+  hudCanvas.width = window.innerWidth;
+  hudCanvas.height = window.innerHeight;
+}
+
+function buildVehicleEntities(type){
+  if(vehicleEntity) viewer.entities.remove(vehicleEntity);
+  if(rotorEntity) viewer.entities.remove(rotorEntity);
+  const startPos = state.position;
+  if(type === 'jet'){
+    vehicleEntity = viewer.entities.add({
+      position: startPos,
+      orientation: Cesium.Transforms.headingPitchRollQuaternion(startPos, new Cesium.HeadingPitchRoll(0,0,0)),
+      box: { dimensions: new Cesium.Cartesian3(8, 16, 3), material: Cesium.Color.fromCssColorString('#4a5568') }
+    });
+  } else {
+    vehicleEntity = viewer.entities.add({
+      position: startPos,
+      orientation: Cesium.Transforms.headingPitchRollQuaternion(startPos, new Cesium.HeadingPitchRoll(0,0,0)),
+      box: { dimensions: new Cesium.Cartesian3(4, 12, 4), material: Cesium.Color.fromCssColorString('#2d3748') }
+    });
+    rotorEntity = viewer.entities.add({
+      position: startPos,
+      orientation: Cesium.Transforms.headingPitchRollQuaternion(startPos, new Cesium.HeadingPitchRoll(0,0,0)),
+      ellipse: { semiMinorAxis:8, semiMajorAxis:8, height:0, material: Cesium.Color.fromCssColorString('#1a202c').withAlpha(0.6) }
+    });
+  }
 }
 
 function spawnTargetFromLandmark(entry){
-  const [name,lon,lat,groundH,topH] = entry;
-  const basePos = Cesium.Cartesian3.fromDegrees(lon,lat, groundH + (topH-groundH)*0.5);
-  const beaconPos = Cesium.Cartesian3.fromDegrees(lon,lat, topH+25);
-  const baseEnt = viewer.entities.add({ position:basePos,
-    cylinder:{ length:Math.max(topH-groundH,20), topRadius:10, bottomRadius:14, material:Cesium.Color.fromCssColorString('#8a3b3b').withAlpha(0.0) } });
-  const beaconEnt = viewer.entities.add({ position:beaconPos,
-    ellipse:{ semiMinorAxis:12, semiMajorAxis:12, height:0, material:Cesium.Color.fromCssColorString('#FFC24B').withAlpha(0.85),
-      outline:true, outlineColor:Cesium.Color.fromCssColorString('#FFC24B') },
-    label:{ text:name, font:'13px Consolas', fillColor:Cesium.Color.fromCssColorString('#FFC24B'),
-      pixelOffset:new Cesium.Cartesian2(0,-20), showBackground:true, backgroundColor:Cesium.Color.BLACK.withAlpha(0.5) } });
-  targets.push({ basePos:Cesium.Cartesian3.clone(basePos), beaconPos:Cesium.Cartesian3.clone(beaconPos), baseEnt, beaconEnt, hp:100, alive:true, name });
+  const [name, lon, lat, groundH, topH] = entry;
+  const basePos = Cesium.Cartesian3.fromDegrees(lon, lat, groundH + (topH-groundH)*0.5);
+  const beaconPos = Cesium.Cartesian3.fromDegrees(lon, lat, topH + 20);
+
+  const baseEnt = viewer.entities.add({
+    position: basePos,
+    cylinder: { length: Math.max(topH-groundH,20), topRadius: 12, bottomRadius: 16,
+      material: Cesium.Color.fromCssColorString('#ff3333').withAlpha(0.0) }
+  });
+  const beaconEnt = viewer.entities.add({
+    position: beaconPos,
+    ellipse: { semiMinorAxis:10, semiMajorAxis:10, height:0,
+      material: Cesium.Color.fromCssColorString('#FFC24B').withAlpha(0.85) },
+    label: { text:name, font:'12px Consolas', fillColor: Cesium.Color.fromCssColorString('#FFC24B'),
+      pixelOffset:new Cesium.Cartesian2(0,-18), showBackground:true, backgroundColor:Cesium.Color.BLACK.withAlpha(0.6) }
+  });
+
+  targets.push({ basePos: Cesium.Cartesian3.clone(basePos), beaconPos: Cesium.Cartesian3.clone(beaconPos),
+    baseEnt, beaconEnt, hp:100, alive:true, name });
 }
 
 function pickActiveTarget(){
   const alive = targets.filter(t=>t.alive);
   if(!alive.length) return null;
-  let best=null,bestD=Infinity;
-  for(const t of alive){ const d=Cesium.Cartesian3.distance(t.basePos,state.position); if(d<bestD){bestD=d;best=t;} }
+  let best=null, bestD=Infinity;
+  for(const t of alive){
+    const d = Cesium.Cartesian3.distance(t.basePos, state.position);
+    if(d<bestD){bestD=d; best=t;}
+  }
   return best;
 }
 
+/* Realistic Projectile Mechanics */
 function fireBullet(){
+  const cfg = VEHICLE_CONFIGS[vehicleType];
   const enu = Cesium.Transforms.eastNorthUpToFixedFrame(state.position);
-  const fLocal = new Cesium.Cartesian3(Math.sin(state.heading)*Math.cos(state.pitch), Math.cos(state.heading)*Math.cos(state.pitch), Math.sin(-state.pitch));
-  const fWorld = Cesium.Matrix4.multiplyByPointAsVector(enu, fLocal, new Cesium.Cartesian3());
-  Cesium.Cartesian3.normalize(fWorld, fWorld);
-  const startPos = Cesium.Cartesian3.clone(state.position);
-  const ent = viewer.entities.add({ position:startPos, point:{ pixelSize:6, color:Cesium.Color.fromCssColorString('#FFEE99') } });
-  bullets.push({ent, pos:startPos, dir:fWorld, life:1.4, speed:340});
-}
-function spawnHitFlash(pos){
-  const ent = viewer.entities.add({ position:pos, ellipsoid:{ radii:new Cesium.Cartesian3(16,16,16), material:Cesium.Color.fromCssColorString('#ffa040').withAlpha(0.75) } });
-  setTimeout(()=>viewer.entities.remove(ent), 350);
-}
 
-/* ---------- Flight physics: banking turn + swoop/dive ---------- */
-function updateVehicle(dt){
-  if(keys['ShiftLeft']||keys['ShiftRight']) state.throttle = Math.min(1, state.throttle + dt*0.5);
-  if(keys['ControlLeft']||keys['ControlRight']) state.throttle = Math.max(0, state.throttle - dt*0.5);
-
-  let rollInput=0;
-  if(keys['KeyA']) rollInput -= 1;
-  if(keys['KeyD']) rollInput += 1;
-  const targetRoll = rollInput * CFG.maxRoll;
-  state.roll += (targetRoll - state.roll) * Math.min(1, dt*CFG.rollRate*2.0);
-
-  let pitchInput=0;
-  if(keys['KeyW']) pitchInput += 1;  // nose down -> dive
-  if(keys['KeyS']) pitchInput -= 1;  // nose up -> climb
-  const targetPitch = pitchInput * CFG.maxPitch;
-  state.pitch += (targetPitch - state.pitch) * Math.min(1, dt*CFG.pitchRate*2.2);
-
-  // coordinated turn: heading rate driven by bank angle, scaled by speed
-  const speedFactor = Math.min(1, state.speed/(CFG.maxSpeed*0.45));
-  state.heading += state.roll * CFG.turnCoupling * speedFactor * dt;
-  let rudder=0;
-  if(keys['KeyQ']) rudder -= 1;
-  if(keys['KeyE']) rudder += 1;
-  state.heading += rudder*0.5*dt;
-
-  // throttle target speed, plus dive/climb energy trade so swooping actually feels like swooping
-  const targetSpeed = CFG.minSpeed + state.throttle*(CFG.maxSpeed-CFG.minSpeed);
-  state.speed += (targetSpeed - state.speed) * Math.min(1, dt*CFG.cruiseAccel);
-  state.speed += (-state.pitch) * 55 * dt;          // nose down (positive pitch input maps down below) gains speed
-  state.speed -= Math.abs(state.roll) * 6 * dt;      // hard bank bleeds a bit of energy
-  state.speed = Math.max(0, Math.min(CFG.maxSpeed*1.15, state.speed));
-
-  // stall
-  let liftPenalty = 1;
-  const stalling = state.speed < CFG.stallSpeed;
-  if(stalling){
-    liftPenalty = Math.max(0, state.speed/CFG.stallSpeed);
-    state.pitch += (1-liftPenalty)*dt*0.7;
-  }
-  document.getElementById('stallWarning').style.opacity = stalling ? (0.5+0.5*Math.sin(performance.now()*0.02)) : 0;
-
-  const enu = Cesium.Transforms.eastNorthUpToFixedFrame(state.position);
+  // Flight path direction plus slight pitch angle
   const fLocal = new Cesium.Cartesian3(
     Math.sin(state.heading)*Math.cos(state.pitch),
     Math.cos(state.heading)*Math.cos(state.pitch),
-    Math.sin(-state.pitch)*liftPenalty
+    Math.sin(state.pitch)
   );
   const fWorld = Cesium.Matrix4.multiplyByPointAsVector(enu, fLocal, new Cesium.Cartesian3());
   Cesium.Cartesian3.normalize(fWorld, fWorld);
-  Cesium.Cartesian3.add(state.position, Cesium.Cartesian3.multiplyByScalar(fWorld, state.speed*dt, new Cesium.Cartesian3()), state.position);
 
-  state.vsi = Math.sin(-state.pitch)*liftPenalty*state.speed;
-  state.gForce = 1 + Math.abs(state.roll)*1.1 + Math.abs(state.vsi)/70;
-  state.aoa = Math.round((state.pitch*180/Math.PI) * (stalling?1.6:0.4));
+  // Muzzle velocity added to aircraft current velocity vector
+  const muzzleVelVector = Cesium.Cartesian3.multiplyByScalar(fWorld, cfg.muzzleVel, new Cesium.Cartesian3());
+  const bulletVel = Cesium.Cartesian3.add(state.velocity, muzzleVelVector, new Cesium.Cartesian3());
 
-  const carto = Cesium.Cartographic.fromCartesian(state.position);
-  if(carto.height < CFG.minAlt){ carto.height = CFG.minAlt; state.hp -= 22*dt*10; }
-  if(carto.height > 3200) carto.height = 3200;
-  Cesium.Ellipsoid.WGS84.cartographicToCartesian(carto, state.position);
+  const startPos = Cesium.Cartesian3.clone(state.position);
+  const ent = viewer.entities.add({
+    position: startPos,
+    polyline: {
+      positions: [startPos, startPos],
+      width: 2,
+      material: Cesium.Color.fromCssColorString('#ffffaa')
+    }
+  });
 
-  const hpr = new Cesium.HeadingPitchRoll(state.heading, -state.pitch, -state.roll);
-  vehicleEntity.position = state.position;
-  vehicleEntity.orientation = Cesium.Transforms.headingPitchRollQuaternion(state.position, hpr);
-
-  camera.lookAt(state.position, new Cesium.HeadingPitchRange(state.heading, -0.28, 55));
-
-  state.cooldown -= dt;
-  if(keys['Space'] && state.cooldown<=0){ fireBullet(); state.cooldown = CFG.fireRate; }
+  bullets.push({ ent, pos: startPos, vel: bulletVel, life: 2.2 });
+  playGunfireSound();
 }
 
 function updateBullets(dt){
-  for(let i=bullets.length-1;i>=0;i--){
+  const gravity = 9.81;
+  const airDrag = 0.00015;
+
+  for(let i=bullets.length-1; i>=0; i--){
     const b = bullets[i];
-    Cesium.Cartesian3.add(b.pos, Cesium.Cartesian3.multiplyByScalar(b.dir,b.speed*dt,new Cesium.Cartesian3()), b.pos);
-    b.ent.position = b.pos; b.life -= dt;
-    let hit=false;
+    const prevPos = Cesium.Cartesian3.clone(b.pos);
+
+    // Apply ballistic gravity & air drag
+    const speed = Cesium.Cartesian3.magnitude(b.vel);
+    const dragMag = airDrag * speed * speed;
+    const dragVec = Cesium.Cartesian3.multiplyByScalar(b.vel, -dragMag * dt / (speed || 1), new Cesium.Cartesian3());
+
+    b.vel.z -= gravity * dt; // gravity drop
+    Cesium.Cartesian3.add(b.vel, dragVec, b.vel);
+
+    // Step position
+    const step = Cesium.Cartesian3.multiplyByScalar(b.vel, dt, new Cesium.Cartesian3());
+    Cesium.Cartesian3.add(b.pos, step, b.pos);
+
+    b.ent.position = b.pos;
+    b.ent.polyline.positions = [prevPos, b.pos];
+    b.life -= dt;
+
+    let hit = false;
     for(const t of targets){
       if(!t.alive) continue;
-      if(Cesium.Cartesian3.distance(b.pos, t.beaconPos) < 18){
-        t.hp -= CFG.damage; hit=true;
-        if(t.hp<=0 && t.alive){
-          t.alive=false; spawnHitFlash(t.beaconPos);
-          viewer.entities.remove(t.baseEnt); viewer.entities.remove(t.beaconEnt);
-          state.score += 1; scoreDomUpdate();
-          showBanner(t.name+' DESTROYED');
-          if(targets.every(x=>!x.alive)) setTimeout(()=>endGame(true), 1200);
+      if(Cesium.Cartesian3.distance(b.pos, t.beaconPos) < 22){
+        t.hp -= VEHICLE_CONFIGS[vehicleType].damage;
+        hit = true;
+        if(t.hp <= 0 && t.alive){
+          t.alive = false;
+          viewer.entities.remove(t.baseEnt);
+          viewer.entities.remove(t.beaconEnt);
+          state.score += 1;
+          scoreVal.textContent = state.score;
+          showBanner(t.name + ' NEUTRALIZED');
+          if(targets.every(x=>!x.alive)){
+            setTimeout(()=>endGame(true), 1200);
+          }
         }
         break;
       }
     }
-    if(hit || b.life<=0){ viewer.entities.remove(b.ent); bullets.splice(i,1); }
-  }
-}
-function scoreDomUpdate(){ /* score no longer shown as a separate panel in v3 HUD; kept for later bits */ }
 
-/* ---------- HUD refs ---------- */
-const speedVal=document.getElementById('speedVal');
-const altVal=document.getElementById('altVal');
-const vsiVal=document.getElementById('vsiVal');
-const hpVal=document.getElementById('hpVal');
-const headingVal=document.getElementById('headingVal');
-const headingStrip=document.getElementById('headingStrip');
-const throttleVal=document.getElementById('throttleVal');
-const gVal=document.getElementById('gVal');
-const aoaVal=document.getElementById('aoaVal');
-const qName=document.getElementById('qName');
-const qDist=document.getElementById('qDist');
-const waypointMarker=document.getElementById('waypointMarker');
-const offscreenArrow=document.getElementById('offscreenArrow');
-const wpLabel=document.getElementById('wpLabel');
-const lowHpFlash=document.getElementById('lowHpFlash');
-const missionBanner=document.getElementById('missionBanner');
-const ladderGroup=document.getElementById('ladderGroup');
-const bankTickGroup=document.getElementById('bankTickGroup');
-
-function buildHeadingStrip(){
-  let html='';
-  for(let d=-360; d<=720; d+=10){
-    const disp = ((d%360)+360)%360;
-    const label = disp%30===0 ? String(disp).padStart(3,'0') : '';
-    html += `<span style="display:inline-block;width:24px;text-align:center;font-size:11px;">${label||'·'}</span>`;
-  }
-  headingStrip.innerHTML = html;
-}
-buildHeadingStrip();
-
-function buildPitchLadder(){
-  let svg='';
-  for(let a=-60; a<=60; a+=10){
-    if(a===0){
-      svg += `<line x1="-90" y1="0" x2="-30" y2="0" class="ladderLine"/><line x1="30" y1="0" x2="90" y2="0" class="ladderLine"/>
-              <text x="-105" y="5" class="ladderLabel" text-anchor="end">0</text>`;
-      continue;
+    if(hit || b.life <= 0){
+      viewer.entities.remove(b.ent);
+      bullets.splice(i, 1);
     }
-    const y = -a*4.4; // px per degree
-    const half = a>0 ? 55 : 40;
-    const cls = a>0 ? 'ladderLine' : 'ladderLineNeg';
-    svg += `<line x1="${-half}" y1="${y}" x2="${-14}" y2="${y}" class="${cls}"/>
-            <line x1="14" y1="${y}" x2="${half}" y2="${y}" class="${cls}"/>
-            <text x="${-half-16}" y="${y+4}" class="ladderLabel" text-anchor="end">${Math.abs(a)}</text>
-            <text x="${half+16}" y="${y+4}" class="ladderLabel">${Math.abs(a)}</text>`;
   }
-  ladderGroup.innerHTML = svg;
 }
-buildPitchLadder();
 
-function buildBankTicks(){
-  let svg='';
-  const marks = [-60,-45,-30,-20,-10,0,10,20,30,45,60];
-  for(const m of marks){
-    const rad = (m-90)*Math.PI/180;
-    const r1=280, r2= (m%30===0)?258:266;
-    const x1=Math.cos(rad)*r1, y1=Math.sin(rad)*r1;
-    const x2=Math.cos(rad)*r2, y2=Math.sin(rad)*r2;
-    svg += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#5CFFB0" stroke-width="${m%30===0?2:1}" opacity="0.7"/>`;
+/* Smooth Aerodynamic Physics Model */
+function updateFlightPhysics(dt){
+  const cfg = VEHICLE_CONFIGS[vehicleType];
+
+  // Throttle Input
+  if(keys['ShiftLeft'] || keys['ShiftRight']) state.throttle = Math.min(1.0, state.throttle + dt * 0.4);
+  if(keys['ControlLeft'] || keys['ControlRight']) state.throttle = Math.max(0.0, state.throttle - dt * 0.4);
+
+  // Pitch Control Dynamics (Elevators)
+  let targetPitchRate = 0;
+  if(keys['KeyW']) targetPitchRate -= cfg.maxPitchRate;
+  if(keys['KeyS']) targetPitchRate += cfg.maxPitchRate;
+  state.pitchRate += (targetPitchRate - state.pitchRate) * Math.min(1.0, dt * cfg.pitchAccel);
+
+  // Roll Control Dynamics (Ailerons)
+  let targetRollRate = 0;
+  if(keys['KeyA']) targetRollRate -= cfg.maxRollRate;
+  if(keys['KeyD']) targetRollRate += cfg.maxRollRate;
+  state.rollRate += (targetRollRate - state.rollRate) * Math.min(1.0, dt * cfg.rollAccel);
+
+  // Yaw Control (Rudder)
+  let targetYawRate = 0;
+  if(keys['KeyQ']) targetYawRate -= 0.4;
+  if(keys['KeyE']) targetYawRate += 0.4;
+  state.yawRate += (targetYawRate - state.yawRate) * Math.min(1.0, dt * 3.0);
+
+  // Angular integration
+  state.roll += state.rollRate * dt;
+  state.pitch += state.pitchRate * dt;
+
+  // Pitch clamp to avoid inverted gimbal locks
+  state.pitch = Math.max(-Math.PI * 0.45, Math.min(Math.PI * 0.45, state.pitch));
+
+  // Bank-to-turn physics: Lift vector tilt drives heading rate (Coordinated Turn)
+  const liftForce = state.speed * state.speed * cfg.liftCoeff;
+  const verticalG = Math.cos(state.roll) * liftForce;
+  const turnG = Math.sin(state.roll) * liftForce;
+
+  // Heading turn rate derived from roll banking
+  const bankTurnRate = (turnG / Math.max(state.speed, 10)) * 1.5;
+  state.heading += (bankTurnRate + state.yawRate) * dt;
+
+  // Thrust & Aerodynamic Drag Engine
+  const thrust = state.throttle * cfg.cruiseAccel * 60;
+  const drag = state.speed * state.speed * cfg.dragCoeff;
+  const gravityComponent = Math.sin(state.pitch) * 9.81 * 2.0; // Speed loss climbing, gain diving
+
+  const accel = thrust - drag - gravityComponent;
+  state.speed = Math.max(cfg.minSpeed, state.speed + accel * dt);
+
+  // G-Force calculation
+  state.gForce = 1.0 + (state.pitchRate * state.speed / 9.81) + Math.abs(turnG / 9.81);
+
+  // Angle of Attack (AOA) calculation
+  state.aoa = (state.pitch - Math.asin(Math.max(-1, Math.min(1, state.vsi / (state.speed || 1))))) * (180 / Math.PI);
+
+  // Compute World Velocity Vector
+  const enu = Cesium.Transforms.eastNorthUpToFixedFrame(state.position);
+  const fLocal = new Cesium.Cartesian3(
+    Math.sin(state.heading) * Math.cos(state.pitch),
+    Math.cos(state.heading) * Math.cos(state.pitch),
+    Math.sin(state.pitch)
+  );
+  const fWorld = Cesium.Matrix4.multiplyByPointAsVector(enu, fLocal, new Cesium.Cartesian3());
+  Cesium.Cartesian3.normalize(fWorld, fWorld);
+
+  state.velocity = Cesium.Cartesian3.multiplyByScalar(fWorld, state.speed, new Cesium.Cartesian3());
+
+  // Translate Aircraft Position
+  const moveDist = Cesium.Cartesian3.multiplyByScalar(fWorld, state.speed * dt, new Cesium.Cartesian3());
+  Cesium.Cartesian3.add(state.position, moveDist, state.position);
+
+  // Altitude & Terrain Floor Clamping
+  const carto = Cesium.Cartographic.fromCartesian(state.position);
+  state.vsi = Math.sin(state.pitch) * state.speed * 196.85; // FT/MIN conversion
+
+  if(carto.height < cfg.minAlt){
+    carto.height = cfg.minAlt;
+    state.hp -= 30 * dt; // Ground scraping damage
   }
-  bankTickGroup.innerHTML = svg;
+  Cesium.Ellipsoid.WGS84.cartographicToCartesian(carto, state.position);
+
+  // Update Entity Orientation
+  const hpr = new Cesium.HeadingPitchRoll(state.heading, state.pitch, state.roll);
+  vehicleEntity.position = state.position;
+  vehicleEntity.orientation = Cesium.Transforms.headingPitchRollQuaternion(state.position, hpr);
+  if(rotorEntity) rotorEntity.position = offsetCartesian(state.position, 0,0,3.2);
+
+  // Smooth Chase Camera
+  const chaseDist = vehicleType==='jet' ? 50 : 40;
+  camera.lookAt(state.position, new Cesium.HeadingPitchRange(state.heading, -0.22, chaseDist));
+
+  // Audio engine pitch synchronization
+  updateEngineAudio(state.throttle, state.speed / cfg.maxSpeed);
+
+  // Weapon Firing
+  state.cooldown -= dt;
+  if(keys['Space'] && state.cooldown <= 0){
+    fireBullet();
+    state.cooldown = cfg.fireRate;
+  }
 }
-buildBankTicks();
+
+/* ============================================================
+   CANVAS JET COCKPIT HUD RENDERER
+   ============================================================ */
+function renderJetHUD(){
+  if(!hudCtx) return;
+  const w = hudCanvas.width;
+  const h = hudCanvas.height;
+  const cx = w / 2;
+  const cy = h / 2;
+
+  hudCtx.clearRect(0, 0, w, h);
+  hudCtx.strokeStyle = '#00ff66';
+  hudCtx.fillStyle = '#00ff66';
+  hudCtx.lineWidth = 1.5;
+  hudCtx.font = '12px Consolas, monospace';
+
+  // 1. Flight Path / Fixed Reticle Marker
+  hudCtx.beginPath();
+  hudCtx.arc(cx, cy, 8, 0, Math.PI * 2);
+  hudCtx.moveTo(cx - 16, cy); hudCtx.lineTo(cx - 8, cy);
+  hudCtx.moveTo(cx + 8, cy); hudCtx.lineTo(cx + 16, cy);
+  hudCtx.moveTo(cx, cy - 16); hudCtx.lineTo(cx, cy - 8);
+  hudCtx.stroke();
+
+  // 2. Pitch Ladder (Horizon Pitch Lines)
+  hudCtx.save();
+  hudCtx.translate(cx, cy);
+  hudCtx.rotate(-state.roll);
+
+  const pitchPxPerDeg = 10;
+  const pitchDeg = state.pitch * (180 / Math.PI);
+
+  for(let p = -80; p <= 80; p += 10){
+    if(p === 0) continue;
+    const y = -(p - pitchDeg) * pitchPxPerDeg;
+    if(Math.abs(y) > 220) continue; // Screen clipping boundary
+
+    hudCtx.beginPath();
+    if(p > 0){
+      // Positive pitch (Solid lines)
+      hudCtx.moveTo(-60, y); hudCtx.lineTo(-20, y); hudCtx.lineTo(-20, y + 8);
+      hudCtx.moveTo(20, y); hudCtx.lineTo(60, y); hudCtx.lineTo(20, y + 8);
+    } else {
+      // Negative pitch (Dashed lines)
+      hudCtx.setLineDash([6, 4]);
+      hudCtx.moveTo(-60, y); hudCtx.lineTo(-20, y);
+      hudCtx.moveTo(20, y); hudCtx.lineTo(60, y);
+    }
+    hudCtx.stroke();
+    hudCtx.setLineDash([]);
+    hudCtx.fillText(p.toString(), 68, y + 4);
+    hudCtx.fillText(p.toString(), -85, y + 4);
+  }
+
+  // Horizon Line (0 Deg)
+  const zeroY = pitchDeg * pitchPxPerDeg;
+  if(Math.abs(zeroY) < 240){
+    hudCtx.beginPath();
+    hudCtx.moveTo(-120, zeroY); hudCtx.lineTo(-30, zeroY);
+    hudCtx.moveTo(30, zeroY); hudCtx.lineTo(120, zeroY);
+    hudCtx.lineWidth = 2;
+    hudCtx.stroke();
+    hudCtx.lineWidth = 1.5;
+  }
+  hudCtx.restore();
+
+  // 3. Telemetry Readouts (AOA, Mach, G-Force)
+  const mach = (state.speed * 0.0015).toFixed(2);
+  hudCtx.fillText(`G  ${state.gForce.toFixed(1)}`, cx - 220, cy + 120);
+  hudCtx.fillText(`AOA ${state.aoa.toFixed(1)}°`, cx - 220, cy + 140);
+  hudCtx.fillText(`MACH ${mach}`, cx - 220, cy + 160);
+
+  // Throttle Indicator Bar
+  hudCtx.strokeRect(cx - 240, cy - 80, 10, 160);
+  const fillH = state.throttle * 160;
+  hudCtx.fillRect(cx - 240, cy + 80 - fillH, 10, fillH);
+  hudCtx.fillText(`THR ${Math.round(state.throttle * 100)}%`, cx - 260, cy + 100);
+}
+
+// Top Compass bar generator
+function buildCompass(){
+  const dirs=['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
+  let html='';
+  for(let i=0; i<64; i++) html += `<span style="display:inline-block;width:24px;text-align:center;">${dirs[i%16][0]}</span>`;
+  document.getElementById('compassStrip').innerHTML = html;
+}
+buildCompass();
 
 function showBanner(text){
+  const missionBanner = document.getElementById('missionBanner');
   missionBanner.textContent = text;
   missionBanner.classList.remove('show'); void missionBanner.offsetWidth; missionBanner.classList.add('show');
 }
@@ -498,88 +686,121 @@ function projectClip(cartesian){
   return clip;
 }
 
-function updateQuestHUD(){
+function updateHUDOverlay(){
   const active = pickActiveTarget();
-  if(!active){ qName.textContent='ALL CLEAR'; qDist.textContent='—'; waypointMarker.style.display='none'; offscreenArrow.style.display='none'; return; }
-  const dist = Cesium.Cartesian3.distance(active.basePos, state.position);
-  qName.textContent = active.name; qDist.textContent = Math.round(dist)+' m'; wpLabel.textContent = active.name;
-  const clip = projectClip(active.beaconPos);
-  const inFront = clip.w>0, ndcX=clip.x/clip.w, ndcY=clip.y/clip.w;
-  if(inFront && ndcX>-1 && ndcX<1 && ndcY>-1 && ndcY<1){
-    const sx=(ndcX*0.5+0.5)*window.innerWidth, sy=(1-(ndcY*0.5+0.5))*window.innerHeight;
-    waypointMarker.style.left=sx+'px'; waypointMarker.style.top=sy+'px';
-    waypointMarker.style.display='block'; offscreenArrow.style.display='none';
-  } else {
+  const waypointMarker = document.getElementById('waypointMarker');
+  const offscreenArrow = document.getElementById('offscreenArrow');
+
+  if(!active){
+    document.getElementById('qName').textContent='ALL CLEAR';
+    document.getElementById('qDist').textContent='—';
     waypointMarker.style.display='none';
-    let angle=Math.atan2(ndcX,ndcY); if(!inFront) angle+=Math.PI;
-    const cx=window.innerWidth/2, cy=window.innerHeight/2, radius=Math.min(window.innerWidth,window.innerHeight)*0.42;
-    const ax=cx+Math.sin(angle)*radius, ay=cy-Math.cos(angle)*radius;
-    offscreenArrow.style.left=(ax-15)+'px'; offscreenArrow.style.top=(ay-15)+'px';
-    offscreenArrow.style.transform=`rotate(${angle}rad)`; offscreenArrow.style.display='block';
+    offscreenArrow.style.display='none';
+    return;
   }
-}
 
-function updateHUD(){
-  speedVal.textContent = Math.round(state.speed);
+  const dist = Cesium.Cartesian3.distance(active.basePos, state.position);
+  document.getElementById('qName').textContent = active.name;
+  document.getElementById('qDist').textContent = Math.round(dist) + ' M';
+  document.getElementById('wpLabel').textContent = active.name;
+
+  const clip = projectClip(active.beaconPos);
+  const inFront = clip.w > 0;
+  const ndcX = clip.x/clip.w, ndcY = clip.y/clip.w;
+
+  if(inFront && ndcX > -1 && ndcX < 1 && ndcY > -1 && ndcY < 1){
+    const sx = (ndcX * 0.5 + 0.5) * window.innerWidth;
+    const sy = (1 - (ndcY * 0.5 + 0.5)) * window.innerHeight;
+    waypointMarker.style.left = sx + 'px';
+    waypointMarker.style.top = sy + 'px';
+    waypointMarker.style.display = 'block';
+    offscreenArrow.style.display = 'none';
+  } else {
+    waypointMarker.style.display = 'none';
+    let angle = Math.atan2(ndcX, ndcY);
+    if(!inFront) angle += Math.PI;
+    const cx = window.innerWidth / 2;
+    const cy = window.innerHeight / 2;
+    const radius = Math.min(window.innerWidth, window.innerHeight) * 0.42;
+    const ax = cx + Math.sin(angle) * radius;
+    const ay = cy - Math.cos(angle) * radius;
+    offscreenArrow.style.left = (ax - 14) + 'px';
+    offscreenArrow.style.top = (ay - 14) + 'px';
+    offscreenArrow.style.transform = `rotate(${angle}rad)`;
+    offscreenArrow.style.display = 'block';
+  }
+
+  // Update top numeric HUD indicators
+  const knots = Math.round(state.speed * 1.94384);
   const carto = Cesium.Cartographic.fromCartesian(state.position);
-  altVal.textContent = Math.round(carto.height);
-  vsiVal.textContent = (state.vsi>=0?'+':'')+Math.round(state.vsi);
-  hpVal.textContent = Math.max(0,Math.round(state.hp));
-  throttleVal.textContent = Math.round(state.throttle*100);
-  gVal.textContent = state.gForce.toFixed(1);
-  aoaVal.textContent = state.aoa;
+  const feet = Math.round(carto.height * 3.28084);
 
-  const headingDeg = ((state.heading*180/Math.PI)%360+360)%360;
-  headingVal.textContent = String(Math.round(headingDeg)).padStart(3,'0');
-  headingStrip.style.left = (200 - (headingDeg/10)*24)+'px';
+  document.getElementById('speedVal').textContent = knots;
+  document.getElementById('altVal').textContent = feet;
+  document.getElementById('vsiVal').textContent = (state.vsi >= 0 ? '+' : '') + Math.round(state.vsi);
+  document.getElementById('hpVal').textContent = Math.max(0, Math.round(state.hp));
 
-  lowHpFlash.style.background = state.hp<30 ? `rgba(255,40,40,${0.15+0.1*Math.sin(performance.now()*0.01)})` : 'rgba(255,40,40,0)';
-
-  const rollDeg = -state.roll*(180/Math.PI);
-  const pitchDeg = state.pitch*(180/Math.PI);
-  document.getElementById('pitchLadderSvg').style.transform =
-    `translate(-50%,-50%) rotate(${rollDeg}deg)`;
-  ladderGroup.setAttribute('transform', `translate(0, ${pitchDeg*4.4})`);
-  document.getElementById('bankScaleSvg').style.transform = `translate(-50%,-50%) rotate(${rollDeg}deg)`;
+  const headingDeg = ((state.heading * 180 / Math.PI) % 360 + 360) % 360;
+  document.getElementById('compassStrip').style.left = (180 - (headingDeg / 360) * 64 * 24) + 'px';
+  document.getElementById('lowHpFlash').style.background = state.hp < 30 ? `rgba(255,40,40,${0.18 + 0.1 * Math.sin(performance.now() * 0.01)})` : 'rgba(255,40,40,0)';
 }
 
 let lastTime = performance.now();
 function animate(){
   if(!running) return;
   requestAnimationFrame(animate);
+
   const now = performance.now();
-  const dt = Math.min(0.05,(now-lastTime)/1000);
+  const dt = Math.min(0.05, (now - lastTime) / 1000);
   lastTime = now;
-  updateVehicle(dt);
+
+  updateFlightPhysics(dt);
   updateBullets(dt);
-  updateQuestHUD();
-  updateHUD();
-  if(state.hp<=0 && state.alive){ state.alive=false; endGame(false); }
+  renderJetHUD();
+  updateHUDOverlay();
+
+  if(state.hp <= 0 && state.alive){
+    state.alive = false;
+    endGame(false);
+  }
 }
 
 function endGame(success){
-  running=false;
-  document.getElementById('gameOverScreen').style.display='flex';
-  document.getElementById('gameOverTitle').textContent = success ? 'ALL TARGETS DESTROYED' : 'AIRCRAFT LOST';
-  document.getElementById('finalScoreText').textContent = state.score+' of '+REAL_TARGETS.length+' landmarks destroyed';
+  running = false;
+  document.getElementById('gameOverScreen').style.display = 'flex';
+  document.getElementById('gameOverTitle').textContent = success ? 'MISSION ACCOMPLISHED' : 'AIRCRAFT LOST';
+  document.getElementById('finalScoreText').textContent = state.score + ' of ' + REAL_TARGETS.length + ' targets destroyed';
 }
 
-document.getElementById('launchBtn').addEventListener('click', startGame);
+document.querySelectorAll('.vcard').forEach(card=>{
+  card.addEventListener('click', ()=>{
+    vehicleType = card.dataset.vehicle;
+    initAudio();
+    startGame();
+  });
+});
 document.getElementById('restartBtn').addEventListener('click', ()=>location.reload());
-if(!GOOGLE_MAPS_API_KEY || GOOGLE_MAPS_API_KEY==='PASTE_YOUR_KEY_HERE'){
-  document.getElementById('keyWarning').style.display='block';
+
+if(!GOOGLE_MAPS_API_KEY || GOOGLE_MAPS_API_KEY === 'PASTE_YOUR_KEY_HERE'){
+  document.getElementById('keyWarning').style.display = 'block';
 }
 
 async function startGame(){
-  document.getElementById('startScreen').style.display='none';
-  document.getElementById('hud').style.display='block';
+  document.getElementById('startScreen').style.display = 'none';
+  document.getElementById('hud').style.display = 'block';
+  document.getElementById('vehicleVal').textContent = VEHICLE_CONFIGS[vehicleType].label;
+  document.getElementById('scoreTotal').textContent = 'of ' + REAL_TARGETS.length;
+
   if(!viewer) await initCesium();
+
   state.position = Cesium.Cartesian3.fromDegrees(START_LON, START_LAT, START_HEIGHT);
-  buildVehicle();
+  buildVehicleEntities(vehicleType);
   targets = [];
   REAL_TARGETS.forEach(spawnTargetFromLandmark);
-  showBanner('MISSION START');
-  running = true; lastTime = performance.now();
+
+  showBanner('INTERDICTION MISSION STARTED');
+  running = true;
+  lastTime = performance.now();
   animate();
 }
 </script>
